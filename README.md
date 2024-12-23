@@ -27,12 +27,16 @@ The ML4FF.py file contains the source Python code of the ML4FF framework. The co
 
 The requirements.txt file lists the necessary Python packages required to set up an environment for running the framework. Users can use this file to install the dependencies and run the framework as shown below:
 
-# python "ML4FF.py" --dataset data/data.csv --columns data/data_columns.csv --output "D:\\ML4FF" --save_models --inner_cv 10 --outer_cv 30 --holdout_slice 0.875 --seed_ml 10 --seed_dl 0
+```bash
+python "ML4FF.py" --dataset data/data.csv --columns data/data_columns.csv --output "D:\\ML4FF" --save_models --inner_cv 10 --outer_cv 30 --holdout_slice 0.875 --seed_ml 10 --seed_dl 0
+```
 
 For Conda users, the environment.yml file specifies the environment configuration, including Python version 3.10.12. This file can be used to create the environment with the following command:
 
-# conda env create -f environment.yml
-# conda activate ml4ff_env
+```bash
+conda env create -f environment.yml
+conda activate ml4ff_env
+```
 
 **data**
 
