@@ -19,7 +19,7 @@ This repository contains the framework code and dataset used in the paper “ML4
  * [LICENSE](/../../blob/main/LICENSE)
  * [README.md](/../../blob/main/README.md)
 
-**code**
+## code
 
 The code folder contains the code and requirements needed to execute the ML4FF framework. 
 
@@ -38,17 +38,17 @@ conda env create -f environment.yml
 conda activate ml4ff_env
 ```
 
-**data**
+## data
 
 The data folder contains the dataset related to the test case for the Brazilian watershed in CSV format (data.csv).
 
 The data_columns.csv file is used as input in the command line to run the framework. It can be customized to suit the user's specific requirements. This file contains just the columns that should be used from the dataset file. The first column is the index, and the last column is used as output.
 
-**figs**
+## figs
 
 The figs folder contains PDF-format files of the figures generated in the research for the presented test case.
 
-**results**
+## results
 
 Summary.xlsx and Summary_Perf.xlsx are two Excel spreadsheets created using the functions build_excel and perf_excel, respectively, of the ML4FF.py file. The use of such functions is documented within the ML4FF.py file. In short, these spreadsheets summarize metrics and statistics on the application of the framework to the test case for the Brazilian watershed. 
 
