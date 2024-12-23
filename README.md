@@ -1,6 +1,6 @@
 # ML4FF
 
-This repository is planned to contain the framework code and dataset used in the paper “ML4FF: A machine-learning framework for flash flood forecasting applied to a Brazilian watershed” by Jaqueline A. J. P. Soares, Luan C. S. M. Ozelim, Luiz Bacelar, Dimas B. Ribeiro, Stephan Stephany, and Leonardo B. L. Santos.
+This repository contains the framework code and dataset used in the paper “ML4FF: A machine-learning framework for flash flood forecasting applied to a Brazilian watershed” by Jaqueline A. J. P. Soares, Luan C. S. M. Ozelim, Luiz Bacelar, Dimas B. Ribeiro, Stephan Stephany, and Leonardo B. L. Santos.
 
 # Project tree
 
@@ -14,7 +14,7 @@ This repository is planned to contain the framework code and dataset used in the
  * [LICENSE](/../../blob/main/LICENSE)
  * [README.md](/../../blob/main/docs/README.md)
 
-The ML4FF.py file contains the source Python code of the ML4FF framework. The code is self-explanatory, allowing researchers to reproduce the results presented in the corresponding paper.
+The ML4FF.py file contains the source Python code of the ML4FF framework. The code is self-explanatory, allowing users to input their own datasets and train and optimize a diverse set of 34 machine learning (ML) models across 11 different classes, choosing the best-performing models.
 
 Summary.xlsx and Summary_Perf.xlsx are two Excel spreadsheets created using the functions build_excel and perf_excel, respectively, of the ML4FF.py file. The use of such functions is documented within the ML4FF.py file. In short, these spreadsheets summarize metrics and statistics on the application of the framework to the test case for the Brazilian watershed. 
 
@@ -22,6 +22,6 @@ The data folder contains the dataset related to the test case for the Brazilian 
 
 The docs folder contains the README file with general instructions.
 
-The figs folder contains PDF-format files of all the figures generated in the research, including those not presented in the paper due to space limitations.
+The figs folder contains PDF-format files of the figures generated in the research for the presented test case.
 
-The Models folder contains the pickled results obtained by the 32 ML methods available in the framework applied to the test case. These files can be imported and manipulated, as documented within the Python framework code.
+The Models folder contains the pickled results obtained by the 34 ML methods available in the framework applied to the test case. These files can be imported and manipulated, as documented within the Python framework code.
