@@ -18,16 +18,17 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.pipeline import Pipeline
 from tempfile import mkdtemp
 import time
-
+import shutil
 from joblib import dump, load
-
 import torch
 from torch import nn
 import torch.nn.functional as F
 from skorch import NeuralNetRegressor
 from skorch.callbacks import EarlyStopping
+import argparse
 
 # Define auxiliary functions to be used in the routine:
+
 # CI_Scipy calculates the 95% confidence BCa bootstrap confidence interval of the mean of the input values "vals"
 def CI_Scipy(vals):
     vals = (vals,)
@@ -72,22 +73,6 @@ def kge(simulations, evaluation):
 
     return kge_
 
-
-# Load dataset from repository. The path to the .csv file is "file_path". For simplicity, the csv is directly downloaded from the github repo.
-
-file_path = "https://raw.githubusercontent.com/jaqueline-soares/ML4FF/main/data/data.csv"
-ML4FF_dataset = pd.read_csv(file_path).set_index("data_hora")
-
-# Shifting the dataset to predict the level of Conselheiro Paulino with a 2h lag. This is added as the "Outp" column of the ML4FF_dataset dataframe.
-outpvals = ML4FF_dataset[["nivel_ConselheiroPaulino"]].shift(-8).dropna().to_numpy().flatten()
-ML4FF_dataset["Outp"]=np.pad(outpvals, (0, 8), 'constant', constant_values=(4, np.nan))
-ML4FF_dataset = ML4FF_dataset.dropna()
-
-# Split the features and the outputs to be predicted.
-
-features = ML4FF_dataset[ML4FF_dataset.columns[:-1]].to_numpy()
-outputs = ML4FF_dataset[ML4FF_dataset.columns[-1]].to_numpy()
-
 # Build the list "all_algs" with all the regressors in hpsklearn, specially their names, class and dictionaries with its input parameters and Bayesian search ranges:
 
 def buil_dict(mdl_base):
@@ -97,33 +82,9 @@ def buil_dict(mdl_base):
         dictn[ll[0]]=ll[1]
     return dictn
 
-all_algs = [[x.name,x,buil_dict(x)] for x in all_regressors("reg").inputs()]
-
-#From the list "all_algs", build the reduced list containing only the ML methods of interest to ML4FF:
-
-ML4FF_algorithms = ["sklearn_RandomForestRegressor","sklearn_BaggingRegressor","sklearn_GradientBoostingRegressor",
-             "sklearn_LinearRegression","sklearn_BayesianRidge","sklearn_ARDRegression","sklearn_LassoLars",
-             "sklearn_LassoLarsIC","sklearn_Lasso","sklearn_ElasticNet","sklearn_LassoCV",
-             "sklearn_TransformedTargetRegressor","sklearn_ExtraTreeRegressor","sklearn_DecisionTreeRegressor",
-             "sklearn_LinearSVR","sklearn_PLSRegression","sklearn_MLPRegressor","sklearn_DummyRegressor",
-             "sklearn_TheilSenRegressor","sklearn_OrthogonalMatchingPursuitCV","sklearn_OrthogonalMatchingPursuit",
-             "sklearn_RidgeCV","sklearn_Ridge","sklearn_SGDRegressor","sklearn_PoissonRegressor",
-             "sklearn_ElasticNetCV",
-             "sklearn_KNeighborsRegressor","sklearn_RadiusNeighborsRegressor",
-             "sklearn_XGBRegressor","sklearn_GaussianProcessRegressor","sklearn_NuSVR","sklearn_LGBMRegressor"
-            ]
-
-all_candidates_ML = [x for x in all_algs if x[0] in ML4FF_algorithms]
-
-# In the ML4FF framework, besides estimators from hpsklearn we also considered DL estimators of the LSTM family. These are incorporated into the framework by taking adavantaged of the skorch package, which relies on PyTorch.
-# In order to use the skorch package, we need to define the Neural Network Regressors to be used, which can be created based on classes of models.
-# For reproducibility, we set the random seed of PyTorch manually. It is worth highlighting that completely reproducible results are not guaranteed across PyTorch releases, individual commits, or different platforms. Furthermore, results may not be reproducible between CPU and GPU executions, even when using identical seeds.
-
-torch.manual_seed(0)
-
 class LSTMModel(nn.Module):
     def __init__(self, 
-                 input_size = 10, 
+                 input_size, 
                  hidden_size = 10, 
                  num_layers = 3, 
                  dropout=0.2):
@@ -178,59 +139,6 @@ class InOrderSplit:
         val_dataset = torch.utils.data.Subset(dataset, val_idx)
         return train_dataset, val_dataset
     
-net_LSTM = NeuralNetRegressor(
-    LSTMModel,
-    max_epochs=200,
-    verbose=0,
-    criterion=torch.nn.MSELoss,
-    batch_size=128,
-    train_split=InOrderSplit(0.1),
-    optimizer = torch.optim.Adam,
-    warm_start=False,
-    callbacks=[EarlyStopping(monitor='valid_loss',patience=15,threshold=0.00001)]
-)
-
-net_LSTMPreModel = NeuralNetRegressor(
-    LSTMPreModel,
-    max_epochs=200,
-    verbose=0,
-    criterion=torch.nn.MSELoss,
-    batch_size=64,
-    train_split=InOrderSplit(0.1),
-    optimizer = torch.optim.Adam,
-    warm_start=False,
-    callbacks=[EarlyStopping(monitor='valid_loss',patience=15,threshold=0.00001)]
-)
-    
-# After defining the regressors whose hyperparameters will be tuned, it is important to define the hyperopt search space. These are presented below for both the LSTM models considered.
-    
-paramsLSTM = {
-    'module__dropout': hp.uniform('module__dropout', 0.2, 0.5),
-    'module__hidden_size': hp.choice('module__hidden_size',[1,5,10,20,25]),
-    'module__num_layers': hp.choice('module__num_layers',[2,3,4,5])
-}
-
-paramsLSTMPreModel = {
-    'batch_size': hp.choice('batch_size',[32,64,128,256]),
-    'module__dropout': hp.uniform('module__dropout', 0.2, 0.5),
-    'module__hidden_size': hp.choice('module__hidden_size',[1,5,10,20,25]),
-    'module__num_layers': hp.choice('module__num_layers',[2,3,4,5]),
-    'module__num_units': hp.choice('module__num_units',[10,20,30,40]),
-    'module__nonlin': hp.choice('module__nonlin',[F.leaky_relu,F.celu]),
-}
-
-# Similarly for models from hpsklearn, we build the list of candidate models for DL:
-
-all_candidates_DL =[
-["DL_LSTM",net_LSTM,paramsLSTM],
-["DL_LSTMPre",net_LSTMPreModel,paramsLSTMPreModel],
-]
-
-# It is important to notice that for DL models we added the prefix "DL_" to their names, which is important for the subsequent calculations of ML4FF.
-# Finally, the list of all methods of interest is generated by concatenating all_candidates_ML and all_candidates_DL.
-
-all_candidates = all_candidates_ML + all_candidates_DL
-
 # The function RefineNCV_General generates two outputs, namely: resultados and resultados_stack.
 # "resultados": is a list containing, in this order:
 #  a) The model name
@@ -281,6 +189,11 @@ def RefineNCV_General(features,outputs,hold_out,random_state,inner_folds,outer_f
         os.mkdir(os.path.join(root,"Models"))
     except:
         pass
+
+    try:
+        os.mkdir(os.path.join(root,"Temp"))
+    except:
+        pass
     
     resultados=[]
     resultados_stack=[]
@@ -315,10 +228,13 @@ def RefineNCV_General(features,outputs,hold_out,random_state,inner_folds,outer_f
                     X_Av = X_Avi
                     y_Av = y_Avi
                 def objective(params,X_train_i=X_Av,y_train_i=y_Av,tscv=cv_inner):
-                    cachedir = mkdtemp()
+                    cachedir = mkdtemp(dir=os.path.join(root,"temp"))
                     pipeline = Pipeline([('transformer', MinMaxScaler()), ('estimator', mdl.set_params(**params))],memory=cachedir)
                     scoring = make_scorer(my_custom_loss_func, greater_is_better=True)
-                    scr = -cross_val_score(pipeline, X_train_i, y_train_i, cv = tscv,n_jobs=-1,scoring=scoring).mean()
+                    try:
+                        scr = -cross_val_score(pipeline, X_train_i, y_train_i, cv = tscv,n_jobs=-1,scoring=scoring).mean()
+                    finally:
+                        shutil.rmtree(cachedir)  # Remove the temporary directory after use
                     return scr
 
                 best=fmin(fn=objective, 
@@ -422,18 +338,12 @@ def RefineNCV_General(features,outputs,hold_out,random_state,inner_folds,outer_f
                     os.mkdir(os.path.join(root,"Models_Production"))
                 except:
                     pass 
-            dump(pipeline_prod, root+"\\Models_Production\\"+str(mdl_name)+'_production.joblib')
+                dump(pipeline_prod, root+"\\Models_Production\\"+str(mdl_name)+'_production.joblib')
                         
         except:
             pass
     return [resultados,resultados_stack]
 
-# Set the root to save the pickled lists.
-
-root= "D:\\ML4FF"
-
-# Run the Nested-CV using the same inputs as the paper ML4FF.
-# run_ML4FF = RefineNCV_General(features,outputs,0.875,10,10,30,all_candidates,root,False)
 
 # If the models have already been run, their pickled lists would be available. The pickled lists of the methods considered in the ML4FF paper are also in the github repo.
 # The following auxiliary function is needed to gather the pickled data located in "path_v". Its inputs are:
@@ -449,16 +359,14 @@ def buil_results_pkl(all_candidates,path_v):
             with open(path_v+"\\"+mdl_name+"-r", "rb") as f:
                 rpar = pickle.load(f)
             with open(path_v+"\\"+mdl_name+"-rs", "rb") as f:
-                    rspar = pickle.load(f)
+                rspar = pickle.load(f)
             for rr1 in rpar:
                 resu.append(rr1)
             for rr2 in rspar:
                 resuls.append(rr2)
-        except:
-            pass
+        except Exception as ex:             
+            raise ValueError(f"Fail when loading the model '{mdl_name}'") from ex
     return [resu,resuls]
-
-ML4FF_pickled = buil_results_pkl(all_candidates,root+"\\Models")
 
 # If one wants to get access to production models and use them for novel predictions, if the flag "save_m" was set to True in RefineNCV_General, the function load_production_pipeline allows for a direct import of the production pipeline:
 # The arguments of the load_production_pipeline function are:
@@ -544,19 +452,17 @@ def perf_excel(simu_runs,root):
             else:
                 pass
             
-perf_excel(ML4FF_pickled,root)
-
 # Finally, the error metrics can be gathered and summarized in an Excel spreadsheet using the function build_excel. Its inputs are:
 # a) "ML4FF_dataset": full dataset present in the github repo and used in the paper
 # b) "ncvs": number of outer folds in the nested-CV (in the paper, 30)
 # c) "hold_out": percentage of values out of the holdout (in the case of the paper, 0.875)
 # d) "simu_runs": the results from the simulations (either run_ML4FF or ML4FF_pickled).
 
-def build_excel(ML4FF_dataset,ncvs,hold_out,simu_runs):
+def build_excel(ML4FF_dataset,root,ncvs,hold_out,simu_runs):
     dfs=[]
     dfs2=[]
     dfs3=[]
-    cols = ML4FF_dataset.index[int(46072*hold_out):]
+    cols = ML4FF_dataset.index[int(len(ML4FF_dataset)*hold_out):]
     for mth in list(set([x[0] for x in simu_runs[1]])):
         cis_final = []
         rrr = [x for x in simu_runs[1] if x[0]==mth]
@@ -644,4 +550,184 @@ def build_excel(ML4FF_dataset,ncvs,hold_out,simu_runs):
             else:
                 pass
             
-build_excel(ML4FF_dataset,30,0.875,ML4FF_pickled)
+def prepare_dl_algorithms(input_size, seed_dl):
+
+    # In the ML4FF framework, besides estimators from hpsklearn we also considered DL estimators of the LSTM family. These are incorporated into the framework by taking adavantaged of the skorch package, which relies on PyTorch.
+    # In order to use the skorch package, we need to define the Neural Network Regressors to be used, which can be created based on classes of models.
+    # For reproducibility, we set the random seed of PyTorch. It is worth highlighting that completely reproducible results are not guaranteed across PyTorch releases, individual commits, or different platforms. Furthermore, results may not be reproducible between CPU and GPU executions, even when using identical seeds.
+
+    torch.manual_seed(seed_dl)
+
+    net_LSTM = NeuralNetRegressor(
+        LSTMModel,
+        module__input_size=input_size,
+        max_epochs=200,
+        verbose=0,
+        criterion=torch.nn.MSELoss,
+        batch_size=128,
+        train_split=InOrderSplit(0.1),
+        optimizer = torch.optim.Adam,
+        warm_start=False,
+        callbacks=[EarlyStopping(monitor='valid_loss',patience=15,threshold=0.00001)]
+    )
+
+    net_LSTMPreModel = NeuralNetRegressor(
+        LSTMPreModel,
+        max_epochs=200,
+        verbose=0,
+        criterion=torch.nn.MSELoss,
+        batch_size=64,
+        train_split=InOrderSplit(0.1),
+        optimizer = torch.optim.Adam,
+        warm_start=False,
+        callbacks=[EarlyStopping(monitor='valid_loss',patience=15,threshold=0.00001)]
+    )
+        
+    # After defining the regressors whose hyperparameters will be tuned, it is important to define the hyperopt search space. These are presented below for both the LSTM models considered.
+        
+    paramsLSTM = {
+        'module__dropout': hp.uniform('module__dropout', 0.2, 0.5),
+        'module__hidden_size': hp.choice('module__hidden_size',[1,5,10,20,25]),
+        'module__num_layers': hp.choice('module__num_layers',[2,3,4,5])
+    }
+
+    paramsLSTMPreModel = {
+        'batch_size': hp.choice('batch_size',[32,64,128,256]),
+        'module__dropout': hp.uniform('module__dropout', 0.2, 0.5),
+        'module__hidden_size': hp.choice('module__hidden_size',[1,5,10,20,25]),
+        'module__num_layers': hp.choice('module__num_layers',[2,3,4,5]),
+        'module__num_units': hp.choice('module__num_units',[10,20,30,40]),
+        'module__nonlin': hp.choice('module__nonlin',[F.leaky_relu,F.celu]),
+    }
+
+    # Similarly for models from hpsklearn, we build the list of candidate models for DL:
+
+    all_candidates_DL =[
+    ["DL_LSTM",net_LSTM,paramsLSTM],
+    ["DL_LSTMPre",net_LSTMPreModel,paramsLSTMPreModel],
+    ]
+
+    return all_candidates_DL
+
+def prepare_ml_algorithms():
+
+    all_algs = [[x.name,x,buil_dict(x)] for x in all_regressors("reg").inputs()]
+
+    #From the list "all_algs", build the reduced list containing only the ML methods of interest to ML4FF:
+
+    ML4FF_algorithms = ["sklearn_RandomForestRegressor","sklearn_BaggingRegressor","sklearn_GradientBoostingRegressor",
+               "sklearn_LinearRegression","sklearn_BayesianRidge","sklearn_ARDRegression","sklearn_LassoLars",
+               "sklearn_LassoLarsIC","sklearn_Lasso","sklearn_ElasticNet","sklearn_LassoCV",
+               "sklearn_TransformedTargetRegressor","sklearn_ExtraTreeRegressor","sklearn_DecisionTreeRegressor",
+               "sklearn_LinearSVR","sklearn_PLSRegression","sklearn_MLPRegressor","sklearn_DummyRegressor",
+               "sklearn_TheilSenRegressor","sklearn_OrthogonalMatchingPursuitCV","sklearn_OrthogonalMatchingPursuit",
+               "sklearn_RidgeCV","sklearn_Ridge","sklearn_SGDRegressor","sklearn_PoissonRegressor",
+               "sklearn_ElasticNetCV",
+               "sklearn_KNeighborsRegressor","sklearn_RadiusNeighborsRegressor",
+               "sklearn_XGBRegressor","sklearn_GaussianProcessRegressor","sklearn_NuSVR","sklearn_LGBMRegressor"
+               ]
+
+    all_candidates_ML = [x for x in all_algs if x[0] in ML4FF_algorithms]
+
+    return all_candidates_ML
+
+def execute_ml4ff(root, save_models, inner_cv, outer_cv, holdout_slice, dataset_file_path, dataset_columns, seed_ml, seed_dl):
+    
+    # Load dataset from repository. The path to the .csv file is "dataset_file_path". For simplicity, the csv is directly downloaded from the github repo.
+    dataset = pd.read_csv(dataset_file_path)
+
+    if not set(dataset_columns).issubset(dataset.columns):
+        raise ValueError(f"Some specified columns are not in the dataset. Missing columns: {set(dataset_columns) - set(dataset.columns)}")
+
+    # Filter the dataset columns with the informed columns
+    dataset = dataset[dataset_columns]
+
+    # Set the first specified column as the index of the dataframe
+    ML4FF_dataset = dataset.set_index(dataset_columns[0])
+
+    # Input size is que number of columns without the output
+    input_size = len(ML4FF_dataset.columns) - 1
+    all_candidates_ML = prepare_ml_algorithms()
+    all_candidates_DL = prepare_dl_algorithms(input_size=input_size, seed_dl=seed_dl)
+    # It is important to notice that for DL models we added the prefix "DL_" to their names, which is important for the subsequent calculations of ML4FF.
+    # Finally, the list of all methods of interest is generated by concatenating all_candidates_ML and all_candidates_DL.
+    all_candidates = all_candidates_ML + all_candidates_DL
+
+    # Split the features and the outputs to be predicted.
+    features = ML4FF_dataset[dataset_columns[1:-1]].to_numpy()
+    outputs = ML4FF_dataset[dataset_columns[-1]].to_numpy()    
+
+    # Run the Nested-CV using the same inputs as the paper ML4FF.
+    run_ML4FF = RefineNCV_General(features,outputs,holdout_slice,seed_ml,inner_cv,outer_cv,all_candidates, root, save_models)
+
+    #ML4FF_pickled = buil_results_pkl(all_candidates, root+"\\Models")
+
+    perf_excel(run_ML4FF, root)
+
+    build_excel(ML4FF_dataset, root, outer_cv,holdout_slice,run_ML4FF)
+
+# Main execution
+if __name__ == "__main__":
+    # Configuring the argparse
+    parser = argparse.ArgumentParser(description="ML4FF Framework")
+    
+    # Adding arguments
+    parser.add_argument("-d", "--dataset",
+                        required=True,
+                        help="Dataset path or URL.")
+    parser.add_argument("-c", "--columns",
+                        required=True,
+                        help="File with the columns that should be used from the dataset. The first column is the index, and the last column is used as output.")    
+    parser.add_argument("-o", "--output",
+                        required=True,
+                        help="Path to store the output files.")
+    parser.add_argument("-sm", "--save_models",
+                        action="store_true",
+                        help="Specify if the models should be stored.")
+    parser.add_argument("-icv", "--inner_cv",
+                        required=True,        
+                        type=int,
+                        help="Inner CV.")
+    parser.add_argument("-ocv", "--outer_cv",
+                        required=True,        
+                        type=int,
+                        help="Outer CV.")
+    parser.add_argument("-hs", "--holdout_slice",
+                        required=True,       
+                        type=float, 
+                        help="Holdout Slice.")
+    parser.add_argument("-sml", "--seed_ml",
+                        required=True,       
+                        type=int, 
+                        help="Seed ML.")
+    parser.add_argument("-sdl", "--seed_dl",
+                        required=True,       
+                        type=int, 
+                        help="Seed DL.")    
+
+    # Parsing the arguments
+    args = parser.parse_args()
+
+    DATASET_FILE_PATH = args.dataset
+    ROOT = args.output
+    SAVE_MODELS = args.save_models
+    INNER_CV = args.inner_cv
+    OUTER_CV = args.outer_cv
+    HOLDOUT_SLICE = args.holdout_slice
+    SEED_ML = args.seed_ml
+    SEED_DL = args.seed_dl
+
+    # Read the dataset_columns file
+    with open(args.columns, "r") as file:
+        line = file.readline()
+    DATASET_COLUMNS = line.split(",")
+        
+    execute_ml4ff(root=ROOT, 
+                  save_models=SAVE_MODELS, 
+                  inner_cv=INNER_CV,
+                  outer_cv=OUTER_CV,
+                  holdout_slice=HOLDOUT_SLICE,
+                  dataset_file_path=DATASET_FILE_PATH,
+                  dataset_columns=DATASET_COLUMNS,
+                  seed_ml=SEED_ML,
+                  seed_dl=SEED_DL)
