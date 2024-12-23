@@ -1,0 +1,11 @@
+numpy
+pandas
+psutil
+openpyxl
+scipy
+scikit-learn
+lightgbm
+xgboost
+torch
+skorch
+git+https://github.com/hyperopt/hyperopt-sklearn
