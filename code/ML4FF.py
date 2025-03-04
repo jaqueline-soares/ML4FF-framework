@@ -26,7 +26,29 @@ import torch.nn.functional as F
 from skorch import NeuralNetRegressor
 from skorch.callbacks import EarlyStopping
 import argparse
+import json
+from dataclasses import dataclass, field
+from typing import List
 
+@dataclass
+class Config:
+    dataset_path: str
+    dataset_columns: List[str]
+    result_path: str
+    save_models: bool
+    inner_cv: int
+    outer_cv: int
+    holdout_slice: float
+    seed: int
+    ml_algorithms: List[str]
+    dl_algorithms: List[str]
+
+    @staticmethod
+    def from_json(file_path: str) -> "Config":
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return Config(**data)
+    
 # Define auxiliary functions to be used in the routine:
 
 # CI_Scipy calculates the 95% confidence BCa bootstrap confidence interval of the mean of the input values "vals"
@@ -550,7 +572,7 @@ def build_excel(ML4FF_dataset,root,ncvs,hold_out,simu_runs):
             else:
                 pass
             
-def prepare_dl_algorithms(input_size, seed_dl):
+def prepare_dl_algorithms(algorithms, input_size, seed_dl):
 
     # In the ML4FF framework, besides estimators from hpsklearn we also considered DL estimators of the LSTM family. These are incorporated into the framework by taking adavantaged of the skorch package, which relies on PyTorch.
     # In order to use the skorch package, we need to define the Neural Network Regressors to be used, which can be created based on classes of models.
@@ -599,23 +621,30 @@ def prepare_dl_algorithms(input_size, seed_dl):
         'module__num_units': hp.choice('module__num_units',[10,20,30,40]),
         'module__nonlin': hp.choice('module__nonlin',[F.leaky_relu,F.celu]),
     }
-
-    # Similarly for models from hpsklearn, we build the list of candidate models for DL:
-
-    all_candidates_DL =[
+    
+    all_algorithms_DL =[
     ["DL_LSTM",net_LSTM,paramsLSTM],
     ["DL_LSTMPre",net_LSTMPreModel,paramsLSTMPreModel],
     ]
 
+    algorithms = [item.lower() for item in algorithms]
+
+    if not set(algorithms).issubset([item[0].lower() for item in all_algorithms_DL]):
+        raise ValueError(f"Some specified DL algorithms are either unavailable in the ML4FF Framework or incorrectly spelled. Please revise the following algorithms: {set(algorithms) - set([item[0].lower() for item in all_algorithms_DL])}")
+
+    # Similarly for models from hpsklearn, we build the list of candidate models for DL:
+
+    all_candidates_DL = [item for item in all_algorithms_DL if item[0].lower() in algorithms]
+
     return all_candidates_DL
 
-def prepare_ml_algorithms():
+def prepare_ml_algorithms(algorithms):
 
     all_algs = [[x.name,x,buil_dict(x)] for x in all_regressors("reg").inputs()]
 
     #From the list "all_algs", build the reduced list containing only the ML methods of interest to ML4FF:
 
-    ML4FF_algorithms = ["sklearn_RandomForestRegressor","sklearn_BaggingRegressor","sklearn_GradientBoostingRegressor",
+    all_algorithms_ML = ["sklearn_RandomForestRegressor","sklearn_BaggingRegressor","sklearn_GradientBoostingRegressor",
                "sklearn_LinearRegression","sklearn_BayesianRidge","sklearn_ARDRegression","sklearn_LassoLars",
                "sklearn_LassoLarsIC","sklearn_Lasso","sklearn_ElasticNet","sklearn_LassoCV",
                "sklearn_TransformedTargetRegressor","sklearn_ExtraTreeRegressor","sklearn_DecisionTreeRegressor",
@@ -626,45 +655,51 @@ def prepare_ml_algorithms():
                "sklearn_KNeighborsRegressor","sklearn_RadiusNeighborsRegressor",
                "sklearn_XGBRegressor","sklearn_GaussianProcessRegressor","sklearn_NuSVR","sklearn_LGBMRegressor"
                ]
+    
+    algorithms = [item.lower() for item in algorithms]
+    all_algorithms_ML = [item.lower() for item in all_algorithms_ML]
+    
+    if not set(algorithms).issubset(all_algorithms_ML):
+        raise ValueError(f"Some specified ML algorithms are either unavailable in the ML4FF Framework or incorrectly spelled. Please revise the following algorithms: {set(algorithms) - set(all_algorithms_ML)}")
 
-    all_candidates_ML = [x for x in all_algs if x[0] in ML4FF_algorithms]
+    all_candidates_ML = [item for item in all_algs if item[0].lower() in algorithms]
 
     return all_candidates_ML
 
-def execute_ml4ff(root, save_models, inner_cv, outer_cv, holdout_slice, dataset_file_path, dataset_columns, seed_ml, seed_dl):
+def execute_ml4ff(config: Config):
     
     # Load dataset from repository. The path to the .csv file is "dataset_file_path". For simplicity, the csv is directly downloaded from the github repo.
-    dataset = pd.read_csv(dataset_file_path)
+    dataset = pd.read_csv(config.dataset_path)
 
-    if not set(dataset_columns).issubset(dataset.columns):
-        raise ValueError(f"Some specified columns are not in the dataset. Missing columns: {set(dataset_columns) - set(dataset.columns)}")
+    if not set(config.dataset_columns).issubset(dataset.columns):
+        raise ValueError(f"Some specified columns are not in the dataset. Missing columns: {set(config.dataset_columns) - set(dataset.columns)}")
 
     # Filter the dataset columns with the informed columns
-    dataset = dataset[dataset_columns]
+    dataset = dataset[config.dataset_columns]
 
     # Set the first specified column as the index of the dataframe
-    ML4FF_dataset = dataset.set_index(dataset_columns[0])
+    ML4FF_dataset = dataset.set_index(config.dataset_columns[0])
 
     # Input size is que number of columns without the output
     input_size = len(ML4FF_dataset.columns) - 1
-    all_candidates_ML = prepare_ml_algorithms()
-    all_candidates_DL = prepare_dl_algorithms(input_size=input_size, seed_dl=seed_dl)
+    all_candidates_ML = prepare_ml_algorithms(config.ml_algorithms)
+    all_candidates_DL = prepare_dl_algorithms(algorithms=config.dl_algorithms, input_size=input_size, seed_dl=config.seed)
     # It is important to notice that for DL models we added the prefix "DL_" to their names, which is important for the subsequent calculations of ML4FF.
     # Finally, the list of all methods of interest is generated by concatenating all_candidates_ML and all_candidates_DL.
     all_candidates = all_candidates_ML + all_candidates_DL
 
     # Split the features and the outputs to be predicted.
-    features = ML4FF_dataset[dataset_columns[1:-1]].to_numpy()
-    outputs = ML4FF_dataset[dataset_columns[-1]].to_numpy()    
+    features = ML4FF_dataset[config.dataset_columns[1:-1]].to_numpy()
+    outputs = ML4FF_dataset[config.dataset_columns[-1]].to_numpy()    
 
     # Run the Nested-CV using the same inputs as the paper ML4FF.
-    run_ML4FF = RefineNCV_General(features,outputs,holdout_slice,seed_ml,inner_cv,outer_cv,all_candidates, root, save_models)
+    run_ML4FF = RefineNCV_General(features,outputs,config.holdout_slice,config.seed,config.inner_cv,config.outer_cv,all_candidates, config.result_path, config.save_models)
 
     #ML4FF_pickled = buil_results_pkl(all_candidates, root+"\\Models")
 
-    perf_excel(run_ML4FF, root)
+    perf_excel(run_ML4FF, config.result_path)
 
-    build_excel(ML4FF_dataset, root, outer_cv,holdout_slice,run_ML4FF)
+    build_excel(ML4FF_dataset, config.result_path, config.outer_cv, config.holdout_slice, run_ML4FF)
 
 # Main execution
 if __name__ == "__main__":
@@ -672,62 +707,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ML4FF Framework")
     
     # Adding arguments
-    parser.add_argument("-d", "--dataset",
+    parser.add_argument("-c", "--config",
                         required=True,
-                        help="Dataset path or URL.")
-    parser.add_argument("-c", "--columns",
-                        required=True,
-                        help="File with the columns that should be used from the dataset. The first column is the index, and the last column is used as output.")    
-    parser.add_argument("-o", "--output",
-                        required=True,
-                        help="Path to store the output files.")
-    parser.add_argument("-sm", "--save_models",
-                        action="store_true",
-                        help="Specify if the models should be stored.")
-    parser.add_argument("-icv", "--inner_cv",
-                        required=True,        
-                        type=int,
-                        help="Inner CV.")
-    parser.add_argument("-ocv", "--outer_cv",
-                        required=True,        
-                        type=int,
-                        help="Outer CV.")
-    parser.add_argument("-hs", "--holdout_slice",
-                        required=True,       
-                        type=float, 
-                        help="Holdout Slice.")
-    parser.add_argument("-sml", "--seed_ml",
-                        required=True,       
-                        type=int, 
-                        help="Seed ML.")
-    parser.add_argument("-sdl", "--seed_dl",
-                        required=True,       
-                        type=int, 
-                        help="Seed DL.")    
-
+                        help="Configuration file. Please see an example at https://github.com/jaqueline-soares/ML4FF-framework.")
+        
     # Parsing the arguments
     args = parser.parse_args()
 
-    DATASET_FILE_PATH = args.dataset
-    ROOT = args.output
-    SAVE_MODELS = args.save_models
-    INNER_CV = args.inner_cv
-    OUTER_CV = args.outer_cv
-    HOLDOUT_SLICE = args.holdout_slice
-    SEED_ML = args.seed_ml
-    SEED_DL = args.seed_dl
-
-    # Read the dataset_columns file
-    with open(args.columns, "r") as file:
-        line = file.readline()
-    DATASET_COLUMNS = line.split(",")
+    config = Config.from_json(args.config)    
         
-    execute_ml4ff(root=ROOT, 
-                  save_models=SAVE_MODELS, 
-                  inner_cv=INNER_CV,
-                  outer_cv=OUTER_CV,
-                  holdout_slice=HOLDOUT_SLICE,
-                  dataset_file_path=DATASET_FILE_PATH,
-                  dataset_columns=DATASET_COLUMNS,
-                  seed_ml=SEED_ML,
-                  seed_dl=SEED_DL)
+    execute_ml4ff(config)

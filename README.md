@@ -1,16 +1,16 @@
 # ML4FF
 
-This repository contains the framework code and dataset used in the paper “ML4FF: A machine-learning framework for flash flood forecasting applied to a Brazilian watershed” by Jaqueline A. J. P. Soares, Luan C. S. M. Ozelim, Luiz Bacelar, Dimas B. Ribeiro, Stephan Stephany, and Leonardo B. L. Santos.
+This repository contains all the framework codes and the dataset used in the paper “ML4FF: A machine-learning framework for flash flood forecasting applied to a Brazilian watershed” by Jaqueline A. J. P. Soares, Luan C. S. M. Ozelim, Luiz Bacelar, Dimas B. Ribeiro, Stephan Stephany, and Leonardo B. L. Santos.
 
 # Project tree
 
  * [code](/../../tree/main/code)
    * [ML4FF.py](/../../blob/main/code/ML4FF.py)
-   * [requirements.txt](/../../blob/main/code/requirements.txt)
    * [environment.yml](/../../blob/main/code/environment.yml)
+   * [requirements.txt](/../../blob/main/code/requirements.txt)
+   * [config.json](/../../blob/main/code/config.json)
  * [data](/../../tree/main/data)
    * [data.csv](/../../blob/main/data/data.csv)
-   * [data_columns.csv](/../../blob/main/data/data_columns.csv)
  * [figs](/../../tree/main/figs)
  * [results](/../../tree/main/results)
    * [Models](/../../tree/main/results/Models)
@@ -21,17 +21,38 @@ This repository contains the framework code and dataset used in the paper “ML4
 
 ## code
 
-The code folder contains the code and requirements needed to execute the ML4FF framework. 
+The code folder contains the source code, a sample configuration file, and the required dependencies to run the ML4FF framework.
 
 The ML4FF.py file contains the source Python code of the ML4FF framework. The code is self-explanatory, allowing users to input their own datasets and train and optimize a diverse set of 34 machine learning (ML) models across 11 different classes, choosing the best-performing models.
 
-The requirements.txt file lists the necessary Python packages required to set up an environment for running the framework. Users can use this file to install the dependencies and run the framework as shown below:
+To run the framework, a **JSON configuration file** is required. This file defines the parameters necessary for the experiment and allows users to customize settings based on their specific needs. The provided config.json file represents the configuration used in the paper. The following table explains each parameter in the configuration file:
+
+| Parameter                    | Description |
+|------------------------------|-------------|
+| `dataset_path`               | Path to the CSV file containing the data. |
+| `dataset_columns`            | List with just the columns that should be used from the dataset. **Important:** the <u>first column</u> is the index, and the <u>last column</u> is used as output. |
+| `result_path`                | Path to store the output files. |
+| `save_models`                | Indicates whether trained models should be saved (`true` or `false`). |
+| `inner_cv`                   | Number of splits for inner cross-validation. |
+| `outer_cv`                   | Number of splits for outer cross-validation. |
+| `holdout_slice`              | Percentage of data used as holdout. |
+| `seed`                       | Seed to ensure experiment reproducibility. |
+| `ml_algorithms`              | List of Machine Learning algorithms to be used. |
+| `dl_algorithms`              | List of Deep Learning algorithms to be used. |
+
+Users can run the framework using the following command:
 
 ```bash
-python "ML4FF.py" --dataset data/data.csv --columns data/data_columns.csv --output "D:\\ML4FF" --save_models --inner_cv 10 --outer_cv 30 --holdout_slice 0.875 --seed_ml 10 --seed_dl 0
+python ML4FF.py -c config.json
 ```
 
-For Conda users, the environment.yml file specifies the environment configuration, including Python version 3.10.12. This file can be used to create the environment with the following command:
+The `requirements.txt` file lists all the necessary Python packages to set up the environment for running the framework. Users can install these dependencies with the following:
+
+```bash
+pip install -r requirements.txt
+```
+
+For Conda users, the `environment.yml` file provides the environment configuration, including Python version 3.10.12. To create and activate the environment, run:
 
 ```bash
 conda env create -f environment.yml
@@ -42,7 +63,7 @@ conda activate ml4ff_env
 
 The data folder contains the dataset related to the test case for the Brazilian watershed in CSV format (data.csv).
 
-The data_columns.csv file is used as input in the command line to run the framework. It can be customized to suit the user's specific requirements. This file contains just the columns that should be used from the dataset file. The first column is the index, and the last column is used as output.
+Users are encouraged to contribute to this framework by suggesting new datasets to be uploaded here.
 
 ## figs
 

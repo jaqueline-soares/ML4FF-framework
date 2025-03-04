@@ -1,0 +1,64 @@
+{
+    "dataset_path": "../data/data.csv",
+    "dataset_columns": 
+    [
+        "data_hora",
+        "chuva_Olaria",
+        "nivel_Olaria",
+        "chuva_Suspiro",
+        "nivel_Suspiro",
+        "chuva_ConselheiroPaulino",
+        "nivel_ConselheiroPaulino",
+        "chuva_VendaDasPedras",
+        "nivel_VendaDasPedras",
+        "chuva_Ypu",
+        "nivel_Ypu",
+        "nivel_ConselheiroPaulino_120min"
+    ],
+    "result_path": "result",
+    "save_models": true,
+    "inner_cv": 10,
+    "outer_cv": 30,
+    "holdout_slice": 0.875,
+    "seed": 10,
+    "ml_algorithms": 
+    [
+        "sklearn_RandomForestRegressor",
+        "sklearn_BaggingRegressor",
+        "sklearn_GradientBoostingRegressor",
+        "sklearn_LinearRegression",
+        "sklearn_BayesianRidge",
+        "sklearn_ARDRegression",
+        "sklearn_LassoLars",
+        "sklearn_LassoLarsIC",
+        "sklearn_Lasso",
+        "sklearn_ElasticNet",
+        "sklearn_LassoCV",
+        "sklearn_TransformedTargetRegressor",
+        "sklearn_ExtraTreeRegressor",
+        "sklearn_DecisionTreeRegressor",
+        "sklearn_LinearSVR",
+        "sklearn_PLSRegression",
+        "sklearn_MLPRegressor",
+        "sklearn_DummyRegressor",
+        "sklearn_TheilSenRegressor",
+        "sklearn_OrthogonalMatchingPursuitCV",
+        "sklearn_OrthogonalMatchingPursuit",
+        "sklearn_RidgeCV",
+        "sklearn_Ridge",
+        "sklearn_SGDRegressor",
+        "sklearn_PoissonRegressor",
+        "sklearn_ElasticNetCV",
+        "sklearn_KNeighborsRegressor",
+        "sklearn_RadiusNeighborsRegressor",
+        "sklearn_XGBRegressor",
+        "sklearn_GaussianProcessRegressor",
+        "sklearn_NuSVR",
+        "sklearn_LGBMRegressor"
+    ],
+    "dl_algorithms":
+    [
+        "DL_LSTM",
+        "DL_LSTMPre"
+    ]
+}
