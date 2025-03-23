@@ -29,6 +29,7 @@ import argparse
 import json
 from dataclasses import dataclass, field
 from typing import List
+import random
 
 @dataclass
 class Config:
@@ -49,6 +50,51 @@ class Config:
             data = json.load(f)
         return Config(**data)
     
+class DatasetHandler:
+
+    def __init__(self, config):
+        # Load the dataset from the path defined in the config file.
+        self.ML4FF_dataset = pd.read_csv(config.dataset_path)
+
+        if not set(config.dataset_columns).issubset(self.ML4FF_dataset.columns):
+            raise ValueError(f"Some specified columns are not in the dataset. Missing columns: {set(config.dataset_columns) - set(self.ML4FF_dataset.columns)}")
+
+        # Filter the dataset columns with the informed columns
+        self.ML4FF_dataset = self.ML4FF_dataset[config.dataset_columns]
+
+        # Set the first specified column as the index of the dataframe
+        self.ML4FF_dataset = self.ML4FF_dataset.set_index(config.dataset_columns[0])
+
+        # Input size is the number of columns without the output
+        self.input_size = len(self.ML4FF_dataset.columns) - 1
+
+        # Split the features and the outputs to be predicted.
+        features = self.ML4FF_dataset[config.dataset_columns[1:-1]].to_numpy()
+        outputs = self.ML4FF_dataset[config.dataset_columns[-1]].to_numpy()
+
+        self.features_nestedCV32 = features[:int(len(features)*config.holdout_slice)].astype(np.float32)
+        self.outputs_nestedCV32 = outputs[:int(len(features)*config.holdout_slice)].astype(np.float32)
+        self.features_holdout32 = features[int(len(features)*config.holdout_slice):].astype(np.float32)
+        self.outputs_holdout32 = outputs[int(len(features)*config.holdout_slice):].astype(np.float32)
+
+        self.features_nestedCV64 = features[:int(len(features)*config.holdout_slice)]
+        self.outputs_nestedCV64 = outputs[:int(len(features)*config.holdout_slice)]
+        self.features_holdout64 = features[int(len(features)*config.holdout_slice):]
+        self.outputs_holdout64 = outputs[int(len(features)*config.holdout_slice):]
+
+    def get_data(self, mdl_name):
+        if mdl_name[:2]=="DL":
+            return self.features_nestedCV32, self.outputs_nestedCV32, self.features_holdout32, self.outputs_holdout32
+        else:
+            # Using the data as float64 is important for the reproducibility of the ML algorithms
+            return self.features_nestedCV64, self.outputs_nestedCV64, self.features_holdout64, self.outputs_holdout64
+        
+    def get_input_size(self):
+        return self.input_size
+    
+    def get_dataset(self):
+        return self.ML4FF_dataset
+
 # Define auxiliary functions to be used in the routine:
 
 # CI_Scipy calculates the 95% confidence BCa bootstrap confidence interval of the mean of the input values "vals"
@@ -183,15 +229,13 @@ class InOrderSplit:
 # *items from g) to j) are not reliable, unless you running the code on a dedicated virtual machine.
 
 # The inputs of the RefineNCV_General function are:
-# a) "features": input features
-# b) "outputs": output values (values to be predicted)
-# c) "hold_out": percentage of values out of the holdout (in the case of the paper, 0.875)
-# d) "random_state": random state to make the results reproducible
-# e) "inner_folds": number of inner folds in the Nested-CV (in the case of the paper, 10)
-# f) "outer_folds": number of outer folds in the Nested-CV (in the case of the paper, 30)
-# g) "all_candidates": list of algorithims to be considered in the benchmark.
-# h) "root": path where the pickled values of "resultados" and "resultados_stack" will be stored for each method. For simplicity, taken as root= "D:\\ML4FF"
-# i) "save_m": flag that indicates if the production pipeline will be saved to root+"\\Models_Production\\ after creation. 
+# a) "datasetHandler": dataset handler to obtain the features and output values (values to be predicted) 
+# b) "random_state": random state to make the results reproducible
+# c) "inner_folds": number of inner folds in the Nested-CV (in the case of the paper, 10)
+# d) "outer_folds": number of outer folds in the Nested-CV (in the case of the paper, 30)
+# e) "all_candidates": list of algorithims to be considered in the benchmark.
+# f) "root": path where the pickled values of "resultados" and "resultados_stack" will be stored for each method. 
+# g) "save_m": flag that indicates if the production pipeline will be saved to root+"\\Models_Production\\ after creation. 
 
 # We need this auxiliary function to properly export and save the string versions of hyperparameters of the DL network.
 def filt_dict_DL(dctpars):
@@ -201,7 +245,7 @@ def filt_dict_DL(dctpars):
         dctpars_out[keyy]=str(dctpars[keyy])
     return dctpars_out
 
-def RefineNCV_General(features,outputs,hold_out,random_state,inner_folds,outer_folds,all_candidates,root,save_m):   
+def RefineNCV_General(datasetHandler,random_state,inner_folds,outer_folds,all_candidates,root,save_m):   
     try:
         os.mkdir(root)
     except:
@@ -220,14 +264,6 @@ def RefineNCV_General(features,outputs,hold_out,random_state,inner_folds,outer_f
     resultados=[]
     resultados_stack=[]
      
-    features_nestedCV = features[:int(len(features)*hold_out)].astype(np.float32)
-    outputs_nestedCV = outputs[:int(len(features)*hold_out)].astype(np.float32)
-    features_holdout = features[int(len(features)*hold_out):].astype(np.float32)
-    outputs_holdout = outputs[int(len(features)*hold_out):].astype(np.float32)
-
-    X_A = features_nestedCV
-    y_A = outputs_nestedCV
-
     cv_inner = TimeSeriesSplit(n_splits=inner_folds)
     cv_outer = TimeSeriesSplit(n_splits=outer_folds)   
     process = psutil.Process(os.getpid())
@@ -237,8 +273,16 @@ def RefineNCV_General(features,outputs,hold_out,random_state,inner_folds,outer_f
         return 1/(2-nse)
     
     for mdl_info in all_candidates:
+
+        reset_seed(random_state)
+
         mdl_name,mdl_type,space = mdl_info
         print(mdl_name)
+
+        features_nestedCV, outputs_nestedCV, features_holdout, outputs_holdout = datasetHandler.get_data(mdl_name)
+        X_A = features_nestedCV
+        y_A = outputs_nestedCV
+
         try:
             def inner_Search(X_Avi,y_Avi):
                 if mdl_name[:2]=="DL":
@@ -258,6 +302,10 @@ def RefineNCV_General(features,outputs,hold_out,random_state,inner_folds,outer_f
                     finally:
                         shutil.rmtree(cachedir)  # Remove the temporary directory after use
                     return scr
+
+                ########################################################################################
+                ########################### Insert your customizations here! ###########################
+                ########################################################################################
 
                 best=fmin(fn=objective, 
                         space=space, 
@@ -407,7 +455,7 @@ def load_production_pipeline(path_v,mdl_name):
 # b) "outputs": output values (values to be predicted) considered in the benchmark
 # c) "hold_out": percentage of values out of the holdout (in the case of the paper, 0.875)
 # d) "all_candidates": list of algorithims which were considered in the benchmark.
-# e) "root": path where the pickled values of "resultados" and "resultados_stack" were stored (after running RefineNCV_General). For simplicity, taken as root= "D:\\ML4FF"
+# e) "root": path where the pickled values of "resultados" and "resultados_stack" were stored (after running RefineNCV_General). 
 # f) "mdl_name": name of the model whose pipeline one wants to create.
 # g) "save_m": flag that indicates if the production pipeline will be saved to root+"\\Models_Production\\ after creation. 
 # The output of the build_production_pipeline function is a sklearn pipeline with fitted entities (scaler and model).
@@ -666,40 +714,50 @@ def prepare_ml_algorithms(algorithms):
 
     return all_candidates_ML
 
-def execute_ml4ff(config: Config):
+def reset_seed(seed_value):
+    """
+    Resets the random seed for various libraries to ensure reproducibility across ML and DL experiments.
+    """
+    # 1. Set PYTHONHASHSEED for reproducible hashing (must be set at program start)
+    os.environ["PYTHONHASHSEED"] = str(seed_value)
     
-    # Load dataset from repository. The path to the .csv file is "dataset_file_path". For simplicity, the csv is directly downloaded from the github repo.
-    dataset = pd.read_csv(config.dataset_path)
+    # 2. Seed Python's built-in random module
+    random.seed(seed_value)
+    
+    # 3. Seed NumPy's random generator
+    np.random.seed(seed_value)
+    
+    # 4. Seed PyTorch for CPU and GPU computations
+    torch.manual_seed(seed_value)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed_value)
+        torch.cuda.manual_seed_all(seed_value)  # For multi-GPU setups
+        
+        # Ensure deterministic behavior for CUDA (if using cuDNN)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    
+    # 5. Enforce deterministic algorithms in PyTorch (for operations that support it)
+    torch.use_deterministic_algorithms(True, warn_only=True)
 
-    if not set(config.dataset_columns).issubset(dataset.columns):
-        raise ValueError(f"Some specified columns are not in the dataset. Missing columns: {set(config.dataset_columns) - set(dataset.columns)}")
+def execute_ml4ff(config: Config):  
 
-    # Filter the dataset columns with the informed columns
-    dataset = dataset[config.dataset_columns]
+    datasetHandler = DatasetHandler(config)
 
-    # Set the first specified column as the index of the dataframe
-    ML4FF_dataset = dataset.set_index(config.dataset_columns[0])
-
-    # Input size is que number of columns without the output
-    input_size = len(ML4FF_dataset.columns) - 1
     all_candidates_ML = prepare_ml_algorithms(config.ml_algorithms)
-    all_candidates_DL = prepare_dl_algorithms(algorithms=config.dl_algorithms, input_size=input_size, seed_dl=config.seed)
+    all_candidates_DL = prepare_dl_algorithms(algorithms=config.dl_algorithms, input_size=datasetHandler.get_input_size(), seed_dl=config.seed)
     # It is important to notice that for DL models we added the prefix "DL_" to their names, which is important for the subsequent calculations of ML4FF.
     # Finally, the list of all methods of interest is generated by concatenating all_candidates_ML and all_candidates_DL.
     all_candidates = all_candidates_ML + all_candidates_DL
 
-    # Split the features and the outputs to be predicted.
-    features = ML4FF_dataset[config.dataset_columns[1:-1]].to_numpy()
-    outputs = ML4FF_dataset[config.dataset_columns[-1]].to_numpy()    
-
-    # Run the Nested-CV using the same inputs as the paper ML4FF.
-    run_ML4FF = RefineNCV_General(features,outputs,config.holdout_slice,config.seed,config.inner_cv,config.outer_cv,all_candidates, config.result_path, config.save_models)
+    # Run the Nested-CV.
+    run_ML4FF = RefineNCV_General(datasetHandler,config.seed,config.inner_cv,config.outer_cv,all_candidates, config.result_path, config.save_models)
 
     #ML4FF_pickled = buil_results_pkl(all_candidates, root+"\\Models")
 
     perf_excel(run_ML4FF, config.result_path)
 
-    build_excel(ML4FF_dataset, config.result_path, config.outer_cv, config.holdout_slice, run_ML4FF)
+    build_excel(datasetHandler.get_dataset(), config.result_path, config.outer_cv, config.holdout_slice, run_ML4FF)
 
 # Main execution
 if __name__ == "__main__":
