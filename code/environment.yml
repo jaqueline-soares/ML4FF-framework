@@ -1,8 +1,9 @@
 name: ml4ff_env
 channels:
   - defaults
+  - conda-forge
 dependencies:
-  - python=3.10.12
+  - python=3.11.11
   - pip
   - numpy
   - pandas
@@ -11,7 +12,7 @@ dependencies:
   - scipy
   - scikit-learn
   - lightgbm
-  - xgboost
+  - xgboost=2.1.4
   - pytorch
   - pip:
       - skorch
