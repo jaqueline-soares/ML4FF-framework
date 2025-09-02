@@ -16,16 +16,17 @@ This repository contains all the framework codes and the dataset used in the pap
    * [Models](/../../tree/main/results/Models)
    * [Summary.xlsx](/../../blob/main/results/Summary.xlsx)
    * [Summary_Perf.xlsx](/../../blob/main/results/Summary_Perf.xlsx)
+ * [supplementary](/../../tree/main/supplementary)  
  * [LICENSE](/../../blob/main/LICENSE)
  * [README.md](/../../blob/main/README.md)
 
 ## code
 
-The code folder contains the source code, a sample configuration file, and the required dependencies to run the ML4FF framework.
+The `code` folder contains the source code, a sample configuration file, and the required dependencies to run the ML4FF framework.
 
-The ML4FF.py file contains the source Python code of the ML4FF framework. The code is self-explanatory, allowing users to input their own datasets and train and optimize a diverse set of 34 machine learning (ML) models across 11 different classes, choosing the best-performing models.
+The `ML4FF.py` file contains the source Python code of the ML4FF framework. The code is self-explanatory, allowing users to input their own datasets and train and optimize a diverse set of 34 machine learning (ML) models across 11 different classes, choosing the best-performing models.
 
-To run the framework, a **JSON configuration file** is required. This file defines the parameters necessary for the experiment and allows users to customize settings based on their specific needs. The provided config.json file represents the configuration used in the paper. The following table explains each parameter in the configuration file:
+To run the framework, a **JSON configuration file** is required. This file defines the parameters necessary for the experiment and allows users to customize settings based on their specific needs. The provided `config.json` file represents the configuration used in the paper. The following table explains each parameter in the configuration file:
 
 | Parameter                    | Description |
 |------------------------------|-------------|
@@ -61,16 +62,20 @@ conda activate ml4ff_env
 
 ## data
 
-The data folder contains the dataset related to the test case for the Brazilian watershed in CSV format (data.csv).
+The `data` folder contains the dataset related to the test case for the Brazilian watershed in CSV format (`data.csv`).
 
 Users are encouraged to contribute to this framework by suggesting new datasets to be uploaded here.
 
 ## figs
 
-The figs folder contains PDF-format files of the figures generated in the research for the presented test case.
+The `figs` folder contains PDF-format files of the figures generated in the research for the presented test case.
 
 ## results
 
-Summary.xlsx and Summary_Perf.xlsx are two Excel spreadsheets created using the functions build_excel and perf_excel, respectively, of the ML4FF.py file. The use of such functions is documented within the ML4FF.py file. In short, these spreadsheets summarize metrics and statistics on the application of the framework to the test case for the Brazilian watershed. 
+`Summary.xlsx` and `Summary_Perf.xlsx` are two Excel spreadsheets created using the functions build_excel and perf_excel, respectively, of the `ML4FF.py` file. The use of such functions is documented within the `ML4FF.py` file. In short, these spreadsheets summarize metrics and statistics on the application of the framework to the test case for the Brazilian watershed. 
 
-The Models folder contains the pickled results obtained by the 34 ML methods available in the framework applied to the test case. These files can be imported and manipulated, as documented within the Python framework code.
+The `Models` folder contains the pickled results obtained by the 34 ML methods available in the framework applied to the test case. These files can be imported and manipulated, as documented within the Python framework code.
+
+## supplementary
+
+The `supplementary` folder provides additional materials that support this research, including descriptive statistics for each variable for all stations in the dataset test case, as well as the hyperparameter search ranges used in the automated optimization of each method available in the framework.
